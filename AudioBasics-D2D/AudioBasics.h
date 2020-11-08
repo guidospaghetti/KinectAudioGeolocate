@@ -10,6 +10,8 @@
 #include "resource.h"
 #include <winsock.h>
 
+#pragma comment(lib, "Ws2_32.lib")
+
 /// <summary>
 /// Main application class for AudioBasics sample.
 /// </summary>
@@ -141,6 +143,8 @@ private:
     // String to store the beam and confidence for display
     wchar_t                 m_szBeamText[MAX_PATH];
 
+    SOCKET                  s;
+
     /// <summary>
     /// Initializes the default Kinect sensor
     /// </summary>
@@ -166,7 +170,7 @@ private:
     void                    SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame);
 
     // Taken from: https://www.codeproject.com/Articles/13071/Programming-Windows-TCP-Sockets-in-C-for-the-Begin
-    bool                    ConnectToHost(int port, char* IPAddress);
+    bool                    ConnectToHost(int port, char* IPAddress, SOCKET& s);
     /// <summary>
     /// Display latest audio data.
     /// </summary>

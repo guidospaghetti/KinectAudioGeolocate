@@ -115,6 +115,13 @@ CAudioBasics::~CAudioBasics()
     SafeRelease(m_pKinectSensor);
 
     DeleteCriticalSection(&m_csLock);
+
+    if (s)
+    {
+        closesocket(s);
+    }
+
+    WSACleanup();
 }
 
 /// <summary>
@@ -608,19 +615,20 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
     {
         // build buffer
         UINT32 offset = 0;
-        UINT32 sampleCount = cbRead / sizeof(float);
-        int bufferSize = 4 + 4 + 4 + 8 + 4 + 4 + sampleCount * 4;
+        DWORD sampleCount = cbRead / sizeof(float);
+        int bufferSize = 4 + 4 + 4 + 8 + 8 + 4 + sampleCount * 4;
         UINT8* buffer = new UINT8[bufferSize];
         float beamAngle = 0.0f;
         float beamAngleConfidence = 0.0f;
         TIMESPAN duration = 0;
         TIMESPAN relativeTime = 0;
+        
 
         pAudioBeamSubFrame->get_BeamAngle(&beamAngle);
         pAudioBeamSubFrame->get_BeamAngleConfidence(&beamAngleConfidence);
         pAudioBeamSubFrame->get_Duration(&duration);
         pAudioBeamSubFrame->get_RelativeTime(&relativeTime);
-
+        
         memcpy(&buffer[offset], (UINT8*)&index, sizeof(int));
         offset += sizeof(int);
         memcpy(&buffer[offset], (UINT8*)&beamAngle, sizeof(float));
@@ -634,7 +642,7 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
         memcpy(&buffer[offset], (UINT8*)&sampleCount, sizeof(int));
         offset += sizeof(int);
 
-        for (int i = 0; i < sampleCount; i++)
+        for (UINT i = 0; i < sampleCount; i++)
         {
             if (offset > bufferSize)
             {
@@ -647,8 +655,18 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
 
         // send to matlab
         static bool first = true;
-        static SOCKET s;
-        ConnectToHost(8032, "192.168.1.152");
+        if (first)
+        {
+            if (!ConnectToHost(8032, "192.168.1.172", s))
+            {
+                delete[] buffer;
+                return;
+            }
+            first = false;
+        }
+        
+
+        send(s, (const char*)buffer, bufferSize, 0);
 
         delete[] buffer;
     }
@@ -657,9 +675,41 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
 }
 
 // Taken from: https://www.codeproject.com/Articles/13071/Programming-Windows-TCP-Sockets-in-C-for-the-Begin
-bool CAudioBasics::ConnectToHost(int port, char* IPAddress)
+bool CAudioBasics::ConnectToHost(int port, char* IPAddress, SOCKET & s)
 {
+    WSADATA wsadata;
+    
+    int error = WSAStartup(0x0202, &wsadata);
 
+    if (error)
+        return false;
+
+    if (wsadata.wVersion != 0x0202)
+    {
+        WSACleanup();
+        return false;
+    }
+
+    SOCKADDR_IN target;
+
+    target.sin_family = AF_INET;
+    target.sin_port = htons(port);
+    target.sin_addr.s_addr = inet_addr(IPAddress);
+
+    s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET)
+    {
+        return false;
+    }
+
+    if (connect(s, (SOCKADDR*)&target, sizeof(target)) == SOCKET_ERROR)
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
 }
 
 /// <summary>
