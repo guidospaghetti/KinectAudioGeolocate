@@ -8,6 +8,7 @@
 
 #include "AudioPanel.h"
 #include "resource.h"
+#include <winsock.h>
 
 /// <summary>
 /// Main application class for AudioBasics sample.
@@ -162,6 +163,10 @@ private:
     /// </summary>
     void                    ProcessAudio(IAudioBeamSubFrame* pAudioBeamSubFrame);
 
+    void                    SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame);
+
+    // Taken from: https://www.codeproject.com/Articles/13071/Programming-Windows-TCP-Sockets-in-C-for-the-Begin
+    bool                    ConnectToHost(int port, char* IPAddress);
     /// <summary>
     /// Display latest audio data.
     /// </summary>

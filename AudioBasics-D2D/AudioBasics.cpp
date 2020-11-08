@@ -442,6 +442,8 @@ HRESULT CAudioBasics::WorkerThread()
                     if (SUCCEEDED(hr))
                     {
                         ProcessAudio(pAudioBeamSubFrame);
+                        // serialize and send audio
+                        SendAudio(i, pAudioBeamSubFrame);
                     }
 
                     SafeRelease(pAudioBeamSubFrame);
@@ -576,6 +578,88 @@ void CAudioBasics::ProcessAudio(IAudioBeamSubFrame* pAudioBeamSubFrame)
             m_nAccumulatedSampleCount = 0;
         }
     }
+}
+
+void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
+{
+    // serialize the audio frame
+    // send over socket to ip:port
+
+    // Want the subframe index, beam angle, beam angle confidence,
+    // duration, relative time, and underlying data
+
+    // build a simple buffer
+    // index | angle | confidence | duration | relative time | numsamples | audio sample | ...
+    // int32 | float | float      | int64    | int64         | int32      | float
+    //
+
+    HRESULT hr = S_OK;
+    float* pAudioBuffer = NULL;
+    UINT cbRead = 0;
+
+
+    hr = pAudioBeamSubFrame->AccessUnderlyingBuffer(&cbRead, (BYTE**)&pAudioBuffer);
+
+    if (FAILED(hr))
+    {
+        SetStatusMessage(L"Failed to read buffer from audio subframe.");
+    }
+    else if (cbRead > 0)
+    {
+        // build buffer
+        UINT32 offset = 0;
+        UINT32 sampleCount = cbRead / sizeof(float);
+        int bufferSize = 4 + 4 + 4 + 8 + 4 + 4 + sampleCount * 4;
+        UINT8* buffer = new UINT8[bufferSize];
+        float beamAngle = 0.0f;
+        float beamAngleConfidence = 0.0f;
+        TIMESPAN duration = 0;
+        TIMESPAN relativeTime = 0;
+
+        pAudioBeamSubFrame->get_BeamAngle(&beamAngle);
+        pAudioBeamSubFrame->get_BeamAngleConfidence(&beamAngleConfidence);
+        pAudioBeamSubFrame->get_Duration(&duration);
+        pAudioBeamSubFrame->get_RelativeTime(&relativeTime);
+
+        memcpy(&buffer[offset], (UINT8*)&index, sizeof(int));
+        offset += sizeof(int);
+        memcpy(&buffer[offset], (UINT8*)&beamAngle, sizeof(float));
+        offset += sizeof(float);
+        memcpy(&buffer[offset], (UINT8*)&beamAngleConfidence, sizeof(float));
+        offset += sizeof(float);
+        memcpy(&buffer[offset], (UINT8*)&duration, sizeof(TIMESPAN));
+        offset += sizeof(TIMESPAN);
+        memcpy(&buffer[offset], (UINT8*)&relativeTime, sizeof(TIMESPAN));
+        offset += sizeof(TIMESPAN);
+        memcpy(&buffer[offset], (UINT8*)&sampleCount, sizeof(int));
+        offset += sizeof(int);
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            if (offset > bufferSize)
+            {
+                delete[] buffer;
+                return;
+            }
+            memcpy(&buffer[offset], (UINT8*)&pAudioBuffer[i], sizeof(float));
+            offset += sizeof(float);
+        }
+
+        // send to matlab
+        static bool first = true;
+        static SOCKET s;
+        ConnectToHost(8032, "192.168.1.152");
+
+        delete[] buffer;
+    }
+
+
+}
+
+// Taken from: https://www.codeproject.com/Articles/13071/Programming-Windows-TCP-Sockets-in-C-for-the-Begin
+bool CAudioBasics::ConnectToHost(int port, char* IPAddress)
+{
+
 }
 
 /// <summary>
