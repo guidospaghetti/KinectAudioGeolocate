@@ -666,7 +666,14 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
         }
         
 
-        send(s, (const char*)buffer, bufferSize, 0);
+        int ret = send(s, (const char*)buffer, bufferSize, 0);
+        if (ret < 0)
+        {
+            first = true;
+            if (s) {
+                closesocket(s);
+            }
+        }
 
         delete[] buffer;
     }
