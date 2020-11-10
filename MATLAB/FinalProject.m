@@ -1,4 +1,4 @@
-clear all
+clearvars -except t1 t2
 close all
 clc
 
@@ -9,24 +9,43 @@ clc
 % read data
 % do math
 figure;
-t = tcpip('0.0.0.0', 8032, 'NetworkRole', 'server');
-global angles;
-global index;
-angles = repmat(struct(), 20, 2);
-index = 1;
-kinectIndex = 1;
-t.BytesAvailableFcnMode = 'byte';
-t.BytesAvailableFcnCount = 512;
-t.BytesAvailableFcn = {@readAngleData, kinectIndex};
-fopen(t);
+second = true;
+if exist('t1', 'var')
+    closeSocket(t1);
+    clear t1
+    if second && exist('t2', 'var')
+        closeSocket(t2);
+        clear t2
+    end
+    pause(1)
+end
 
+t1 = tcpip('0.0.0.0', 8032, 'NetworkRole', 'server');
+if second
+    t2 = tcpip('0.0.0.0', 8033, 'NetworkRole', 'server');
+end
+% global angles;
+% global index;
+% angles = repmat(struct(), 20, 2);
+% index = 1;
+% kinectIndex = 1;
+% t.BytesAvailableFcnMode = 'byte';
+% t.BytesAvailableFcnCount = 512;
+% t.BytesAvailableFcn = {@readAngleData, kinectIndex};
+fopen(t1);
+if second
+    fopen(t2);
+end
+scale = 10;
+loc1 = [0, 0, deg2rad(0)];
+loc2 = [6.5, 3.5, deg2rad(270)];
 % Read the buffer, this is the order
 % index | angle | confidence | duration | relative time | numsamples | audio sample | ...
 % int32 | float | float      | int64    | int64         | int32      | float
 % 
 
-while 1
-end
+% while 1
+% end
 numToRead = 1000;
 data = repmat(struct(), numToRead, 1);
 maxAngle = deg2rad(50);
@@ -36,67 +55,61 @@ minRes = deg2rad(5);
 
 
 
-% tic;
-% count = 1;
+count = 1;
 % for ii = 1:numToRea
-% while 1
-%     ii = 1;
-% 
-%     indexArray = uint8(fread(t, 4, 'uint8'));
-%     data(ii).index = typecast(indexArray, 'int32');
-%     
-%     angleArray = uint8(fread(t, 4, 'uint8'));
-%     data(ii).angle = typecast(angleArray, 'single');
-%     
-%     confidenceArray = uint8(fread(t, 4, 'uint8'));
-%     data(ii).confidence = typecast(confidenceArray, 'single');
-%     
-%     durationArray = uint8(fread(t, 8, 'uint8'));
-%     data(ii).duration = typecast(durationArray, 'int64');
-%     
-%     relTimeArray = uint8(fread(t, 8, 'uint8'));
-%     data(ii).relTime = typecast(relTimeArray, 'int64');
-%     
-%     numSamplesArray = uint8(fread(t, 4, 'uint8'));
-%     data(ii).numSamples = typecast(numSamplesArray, 'int32');
-%     
-%     if data(ii).numSamples <= 0 || data(ii).numSamples > 300
-%         disp(['Got ' num2str(data(ii).numSamples) ' numSamples, BAD!']);
-%         continue;
-%     end
-%     
-%     data(ii).samples = zeros(data(ii).numSamples, 1);
-%     bufferSize = t.InputBufferSize;
-%     bytesToRead = double(data(ii).numSamples*4);
-%     byteIdx = 0;
-%     startIdx = 1;
-%     for jj = 1:ceil(bytesToRead/bufferSize)
-% 
-%         numBytes = min(bufferSize, bytesToRead-byteIdx);
-%         sampleArray = uint8(fread(t, numBytes, 'uint8'));
-%         stopIdx = startIdx+length(sampleArray)/4-1;
-%         data(ii).samples(startIdx:stopIdx) = typecast(sampleArray, 'single');
-%         startIdx = stopIdx+1;
-%         bytesIdx = byteIdx+numBytes;
-%     end
-%     
-%     
-%     if mod(count, 10) == 0
-%         angle = data(ii).angle;
-%         angleConf = (minRes-maxAngle)*data(ii).confidence + maxAngle;
-%         minTheta = max([angle-angleConf -maxDrawAngle]);
-%         maxTheta = min([angle+angleConf maxDrawAngle]);
-%         theta = linspace(minTheta, maxTheta, 50);
-%         x = sin(theta);
-%         y = cos(theta);
-%         fill([0 x], [0 y], 'c', 'FaceAlpha', 0.5);
-%         line([0 sin(angle)], [0 cos(angle)]);
-%         axis([-1 1 0 1]);
-%         drawnow;
-%     end
-%     count = count + 1;
-% end
-% toc;
+while 1
+    ii = 1;
 
-closeSocket(t);
+    beam1 = readAudioBeamData(t1);
+    if ~isfield(beam1, 'index')
+        continue;
+    end
+    if second
+        beam2 = readAudioBeamData(t2);
+        if ~isfield(beam1, 'index')
+            continue;
+        end
+    end
+
+    if mod(count, 10) == 0
+        angle = -1*beam1.angle;
+        angleConf = (minRes-maxAngle)*beam1.confidence + maxAngle;
+%         minTheta = max([angle-angleConf -maxDrawAngle])+loc1(3);
+%         maxTheta = min([angle+angleConf maxDrawAngle])+loc1(3);
+        minTheta = angle-angleConf + loc1(3);
+        maxTheta = angle+angleConf + loc1(3);
+        theta = linspace(minTheta, maxTheta, 50);
+        x = sin(theta)*scale+loc1(1);
+        y = cos(theta)*scale+loc1(2);
+        fill([loc1(1) x], [loc1(2) y], 'c', 'FaceAlpha', 0.5);
+        line([loc1(1) sin(angle+loc1(3))*scale+loc1(1)], [loc1(2) cos(angle+loc1(3))*scale+loc1(2)]);
+        axis([-8 11 -2 11]);
+        if second
+            hold on
+
+
+            angle = -1*beam2.angle;
+            angleConf = (minRes-maxAngle)*beam2.confidence + maxAngle;
+%             minTheta = max([angle-angleConf -maxDrawAngle]);
+%             maxTheta = min([angle+angleConf maxDrawAngle]);
+            minTheta = angle-angleConf + loc2(3);
+            maxTheta = angle+angleConf + loc2(3);
+            theta = linspace(minTheta, maxTheta, 50);
+            x = sin(theta)*scale+loc2(1);
+            y = cos(theta)*scale+loc2(2);
+            fill([loc2(1) x], [loc2(2) y], 'm', 'FaceAlpha', 0.5);
+            line([loc2(1) sin(angle+loc2(3))*scale+loc2(1)], [loc2(2) cos(angle+loc2(3))*scale+loc2(2)], 'Color', 'm');
+    %         axis([-1 1 0 1]);
+            hold off
+        end
+        drawnow;
+    end
+    count = count + 1;
+    
+end
+
+closeSocket(t1);
+if second
+    closeSocket(t2);
+end
 
