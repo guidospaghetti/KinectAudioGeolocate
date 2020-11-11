@@ -7,6 +7,7 @@
 #include "stdafx.h"
 #include "AudioBasics.h"
 #include "resource.h"
+#include <chrono>
 
 // For M_PI and log definitions
 #define _USE_MATH_DEFINES
@@ -613,7 +614,10 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
     }
     else if (cbRead > 0)
     {
-        // build buffer
+        static const auto startTimeDuration = std::chrono::system_clock::now().time_since_epoch();
+        static const long long startTime = std::chrono::duration_cast<std::chrono::nanoseconds>(startTimeDuration).count();
+        static TIMESPAN lastRelativeTime = 0;
+        static bool firstOutput = true;
         UINT32 offset = 0;
         DWORD sampleCount = cbRead / sizeof(float);
         int bufferSize = 4 + 4 + 4 + 8 + 8 + 4 + sampleCount * 4;
@@ -629,6 +633,12 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
         pAudioBeamSubFrame->get_Duration(&duration);
         pAudioBeamSubFrame->get_RelativeTime(&relativeTime);
         
+        if (firstOutput)
+        {
+            firstOutput = false;
+            lastRelativeTime = relativeTime;
+        }
+        TIMESPAN outTime = startTime + (relativeTime - lastRelativeTime)*100;
         memcpy(&buffer[offset], (UINT8*)&index, sizeof(int));
         offset += sizeof(int);
         memcpy(&buffer[offset], (UINT8*)&beamAngle, sizeof(float));
@@ -637,7 +647,7 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
         offset += sizeof(float);
         memcpy(&buffer[offset], (UINT8*)&duration, sizeof(TIMESPAN));
         offset += sizeof(TIMESPAN);
-        memcpy(&buffer[offset], (UINT8*)&relativeTime, sizeof(TIMESPAN));
+        memcpy(&buffer[offset], (UINT8*)&outTime, sizeof(TIMESPAN));
         offset += sizeof(TIMESPAN);
         memcpy(&buffer[offset], (UINT8*)&sampleCount, sizeof(int));
         offset += sizeof(int);
@@ -654,22 +664,22 @@ void CAudioBasics::SendAudio(int index, IAudioBeamSubFrame* pAudioBeamSubFrame)
         }
 
         // send to matlab
-        static bool first = true;
-        if (first)
+        static bool firstConnection = true;
+        if (firstConnection)
         {
             if (!ConnectToHost(8032, "192.168.1.172", s))
             {
                 delete[] buffer;
                 return;
             }
-            first = false;
+            firstConnection = false;
         }
         
 
         int ret = send(s, (const char*)buffer, bufferSize, 0);
         if (ret < 0)
         {
-            first = true;
+            firstConnection = true;
             if (s) {
                 closesocket(s);
             }
