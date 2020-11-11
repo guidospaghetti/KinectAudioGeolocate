@@ -1,6 +1,14 @@
 function data = readAudioBeamData(t)
 
-data = struct;
+
+% Read the buffer, this is the order
+% index | angle | confidence | duration | relative time | numsamples | audio sample | ...
+% int32 | float | float      | int64    | int64         | int32      | float
+% 
+
+
+data = struct('index', [], 'angle', [], 'confidence', [], 'duration', [], ...
+    'relTime', [], 'numSamples', [], 'samples', []);
 
 indexArray = uint8(fread(t, 4, 'uint8'));
 data.index = typecast(indexArray, 'int32');
@@ -15,7 +23,10 @@ durationArray = uint8(fread(t, 8, 'uint8'));
 data.duration = typecast(durationArray, 'int64');
 
 relTimeArray = uint8(fread(t, 8, 'uint8'));
-data.relTime = typecast(relTimeArray, 'int64');
+timeSinceEpoch = typecast(relTimeArray, 'int64');
+wholeSecs = double(timeSinceEpoch)/1e9;
+fracSecs = double(timeSinceEpoch - int64(wholeSecs)*1e9)/1e9;
+data.relTime = datetime(wholeSecs,'ConvertFrom','posixTime','Format','yyyy.MM.dd HH:mm:ss.SSSSSSSSS') + seconds(fracSecs);
 
 numSamplesArray = uint8(fread(t, 4, 'uint8'));
 data.numSamples = typecast(numSamplesArray, 'int32');

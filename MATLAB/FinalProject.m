@@ -1,4 +1,4 @@
-clearvars -except t1 t2
+clearvars -except tcp
 close all
 clc
 
@@ -8,108 +8,84 @@ clc
 % differentiate between connected users
 % read data
 % do math
-figure;
-second = true;
-if exist('t1', 'var')
-    closeSocket(t1);
-    clear t1
-    if second && exist('t2', 'var')
-        closeSocket(t2);
-        clear t2
-    end
-    pause(1)
-end
 
-t1 = tcpip('0.0.0.0', 8032, 'NetworkRole', 'server');
-if second
-    t2 = tcpip('0.0.0.0', 8033, 'NetworkRole', 'server');
-end
-% global angles;
-% global index;
-% angles = repmat(struct(), 20, 2);
-% index = 1;
-% kinectIndex = 1;
-% t.BytesAvailableFcnMode = 'byte';
-% t.BytesAvailableFcnCount = 512;
-% t.BytesAvailableFcn = {@readAngleData, kinectIndex};
-fopen(t1);
-if second
-    fopen(t2);
-end
+
+numSensors = 2;
+startingPort = 8032;
+
 scale = 10;
-loc1 = [0, 0, deg2rad(0)];
-loc2 = [6.5, 3.5, deg2rad(270)];
-% Read the buffer, this is the order
-% index | angle | confidence | duration | relative time | numsamples | audio sample | ...
-% int32 | float | float      | int64    | int64         | int32      | float
-% 
-
-% while 1
-% end
-numToRead = 1000;
-data = repmat(struct(), numToRead, 1);
+locations = [0, 0, deg2rad(0);
+             6.5, 3.5, deg2rad(270)];
+plotAxis = [-8 11 -2 11];
+% Kinect measures across +-50 degrees
+% Resolution of measurements is 5 degrees
 maxAngle = deg2rad(50);
-maxDrawAngle = deg2rad(90);
 minRes = deg2rad(5);
+colors = ['c', 'm', 'g', 'r', 'y'];
 
-
-
+if exist('tcp', 'var')
+    for ii = 1:numSensors
+        closeSocket(tcp{ii})
+    end
+    clear tcp
+    pause(1);
+end
 
 count = 1;
-% for ii = 1:numToRea
-while 1
-    ii = 1;
+beam(1:numSensors) = struct('index', [], 'angle', [], 'confidence', [], 'duration', [], ...
+    'relTime', [], 'numSamples', [], 'samples', []);
 
-    beam1 = readAudioBeamData(t1);
-    if ~isfield(beam1, 'index')
-        continue;
-    end
-    if second
-        beam2 = readAudioBeamData(t2);
-        if ~isfield(beam1, 'index')
-            continue;
+figure;
+tcp = cell(numSensors, 1);
+for ii = 1:numSensors
+    tcp{ii} = tcpip('0.0.0.0', startingPort+ii-1, 'NetworkRole', 'server');
+end
+
+for ii = 1:numSensors
+    fopen(tcp{ii});
+end
+
+for ii = 1:numSensors
+    flushinput(tcp{ii});
+end
+
+while 1
+    
+    skip = false;
+    for ii = 1:numSensors
+        beam(ii) = readAudioBeamData(tcp{ii});
+        if ~isfield(beam(ii), 'index')
+            skip = true;
         end
+    end
+    if skip
+        continue;
     end
 
     if mod(count, 10) == 0
-        angle = -1*beam1.angle;
-        angleConf = (minRes-maxAngle)*beam1.confidence + maxAngle;
-%         minTheta = max([angle-angleConf -maxDrawAngle])+loc1(3);
-%         maxTheta = min([angle+angleConf maxDrawAngle])+loc1(3);
-        minTheta = angle-angleConf + loc1(3);
-        maxTheta = angle+angleConf + loc1(3);
-        theta = linspace(minTheta, maxTheta, 50);
-        x = sin(theta)*scale+loc1(1);
-        y = cos(theta)*scale+loc1(2);
-        fill([loc1(1) x], [loc1(2) y], 'c', 'FaceAlpha', 0.5);
-        line([loc1(1) sin(angle+loc1(3))*scale+loc1(1)], [loc1(2) cos(angle+loc1(3))*scale+loc1(2)]);
-        axis([-8 11 -2 11]);
-        if second
-            hold on
-
-
-            angle = -1*beam2.angle;
-            angleConf = (minRes-maxAngle)*beam2.confidence + maxAngle;
-%             minTheta = max([angle-angleConf -maxDrawAngle]);
-%             maxTheta = min([angle+angleConf maxDrawAngle]);
-            minTheta = angle-angleConf + loc2(3);
-            maxTheta = angle+angleConf + loc2(3);
+        for ii = 1:numSensors
+            angle = -1*beam(ii).angle;
+            angleConf = (minRes-maxAngle)*beam(ii).confidence + maxAngle;
+            minTheta = angle-angleConf + locations(ii, 3);
+            maxTheta = angle+angleConf + locations(ii, 3);
             theta = linspace(minTheta, maxTheta, 50);
-            x = sin(theta)*scale+loc2(1);
-            y = cos(theta)*scale+loc2(2);
-            fill([loc2(1) x], [loc2(2) y], 'm', 'FaceAlpha', 0.5);
-            line([loc2(1) sin(angle+loc2(3))*scale+loc2(1)], [loc2(2) cos(angle+loc2(3))*scale+loc2(2)], 'Color', 'm');
-    %         axis([-1 1 0 1]);
-            hold off
+            x = sin(theta)*scale+locations(ii, 1);
+            y = cos(theta)*scale+locations(ii, 2);
+            
+            if ii > 1
+                hold on
+            end
+            fill([locations(ii, 1) x], [locations(ii, 2) y], colors(ii), 'FaceAlpha', 0.5);
+            line([locations(ii, 1) sin(angle+locations(ii, 3))*scale+locations(ii, 1)], ...
+                 [locations(ii, 2) cos(angle+locations(ii, 3))*scale+locations(ii, 2)]);
+            axis(plotAxis);
+            if ii > 1
+                hold off
+            end
         end
         drawnow;
     end
     count = count + 1;
     
-end
-
-closeSocket(t1);
-if second
-    closeSocket(t2);
 end
 
